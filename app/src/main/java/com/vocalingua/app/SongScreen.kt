@@ -64,7 +64,7 @@ fun SongScreen(
     val activeCue = if (player.ready) cues.indexOfLast { it.timeSeconds <= playbackSeconds }.coerceAtLeast(0) else 0
 
     LaunchedEffect(activeCue, player.isPlaying) {
-        if (player.isPlaying) listState.animateScrollToItem(activeCue.coerceIn(0, cues.lastIndex))
+        if (player.isPlaying) listState.animateScrollToItem((activeCue + 1).coerceIn(1, cues.size))
     }
     LaunchedEffect(rate, player.ready, edition) {
         if (player.ready) player.setSpeed(rate)
@@ -192,7 +192,6 @@ fun SongScreen(
                     onToggle = { expanded = if (expanded == index) -1 else index },
                     onPlay = {
                         player.seekTo(cue.timeSeconds)
-                        if (expanded != index) expanded = index
                     },
                     onWord = onWord,
                     onCalibrate = {
