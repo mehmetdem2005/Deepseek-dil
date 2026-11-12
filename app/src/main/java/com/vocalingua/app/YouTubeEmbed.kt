@@ -80,7 +80,10 @@ fun YouTubeEmbed(
     // Restrict to trusted, hard-coded official artist videos.
     val allowed = setOf("Am8Yi6tjnVE", "ehBGpIlEj3k")
     val safeVideoId = if (videoId in allowed) videoId else "Am8Yi6tjnVE"
-    // YouTube requires the installed Android application ID as an HTTPS Referer.\n    // This is a WebView virtual base URL; it does not contact an invented website.\n    val clientOrigin = "https://com.vocalingua.app"\n    val html = remember(safeVideoId) {
+    // YouTube requires the installed Android application ID as an HTTPS Referer.
+    // This is a WebView virtual base URL; it does not contact an invented website.
+    val clientOrigin = "https://com.vocalingua.app"
+    val html = remember(safeVideoId) {
         """
         <!doctype html><html><head>
         <meta name="viewport" content="width=device-width,initial-scale=1">
