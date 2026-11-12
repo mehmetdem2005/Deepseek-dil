@@ -31,18 +31,20 @@ private enum class Page { SONG, WORD, PHONEME, PRACTICE, LIBRARY, PROGRESS }
 private fun AppRoot() {
     var pageName by rememberSaveable { mutableStateOf(Page.SONG.name) }
     var selectedSound by rememberSaveable { mutableStateOf("ɐ̃") }
+    var selectedWord by rememberSaveable { mutableStateOf("chão") }
     val page = Page.valueOf(pageName)
     val goBack = { pageName = Page.SONG.name }
 
     when (page) {
         Page.SONG -> SongScreen(
-            onWord = { pageName = Page.WORD.name },
+            onWord = { word -> selectedWord = word; pageName = Page.WORD.name },
             onPhoneme = { selectedSound = "ɐ̃"; pageName = Page.PHONEME.name },
             onPractice = { pageName = Page.PRACTICE.name },
             onLibrary = { pageName = Page.LIBRARY.name },
             onProgress = { pageName = Page.PROGRESS.name }
         )
         Page.WORD -> WordScreen(
+            word = selectedWord,
             onBack = goBack,
             onPhoneme = { symbol -> selectedSound = symbol; pageName = Page.PHONEME.name },
             onPractice = { pageName = Page.PRACTICE.name }

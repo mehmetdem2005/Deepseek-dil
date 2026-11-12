@@ -2,8 +2,12 @@ package com.vocalingua.app
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -14,289 +18,286 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.foundation.Canvas
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.layout.ContentScale
+import kotlinx.coroutines.launch
+
+private enum class SongEdition(val title:String,val videoId:String,val duration:Float) {
+    NORMAL("Normal","Am8Yi6tjnVE",90f),
+    SPED_UP("Sped Up","ehBGpIlEj3k",84f)
+}
 
 @Composable
 fun SongScreen(
-    onWord: () -> Unit,
+    onWord: (String) -> Unit,
     onPhoneme: () -> Unit,
     onPractice: () -> Unit,
     onLibrary: () -> Unit,
     onProgress: () -> Unit
 ) {
-    var selectedPhrase by remember { mutableIntStateOf(0) }
-    var showIpa by remember { mutableStateOf(true) }
-    var showTranslation by remember { mutableStateOf(false) }
-    var favorite by remember { mutableStateOf(false) }
-    var speedIndex by remember { mutableIntStateOf(1) }
-    var showRhythm by remember { mutableStateOf(true) }
-    val speeds = listOf(.75f, 1f, 1.25f)
     val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("vocalingua_lyric_sync", android.content.Context.MODE_PRIVATE) }
     val player = remember { YouTubeController() }
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    var edition by remember { mutableStateOf(SongEdition.SPED_UP) }
+    var expanded by remember { mutableIntStateOf(-1) }
+    var favorite by remember { mutableStateOf(false) }
+    var rate by remember { mutableFloatStateOf(1f) }
+    var syncRevision by remember { mutableIntStateOf(0) }
+    var editTiming by remember { mutableStateOf(false) }
+    val rateOptions = listOf(.75f, 1f, 1.25f)
+
+    // The preset times are explicitly approximate. Tap "İşaretle" while the video plays
+    // to replace any preset with a user-calibrated real playback timestamp.
+    val cues = remember(edition, syncRevision) {
+        fullDemoCues.mapIndexed { i,cue ->
+            val key = "cue_${edition.videoId}_$i"
+            val estimate = cue.timeSeconds * (edition.duration / 90f)
+            cue.copy(timeSeconds = prefs.getFloat(key, estimate))
+        }
+    }
+    val playbackSeconds = player.playbackSeconds
+    val activeCue = if (player.ready) cues.indexOfLast { it.timeSeconds <= playbackSeconds }.coerceAtLeast(0) else 0
+
+    LaunchedEffect(activeCue, player.isPlaying) {
+        if (player.isPlaying) listState.animateScrollToItem(activeCue.coerceIn(0, cues.lastIndex))
+    }
+    LaunchedEffect(rate, player.ready, edition) {
+        if (player.ready) player.setSpeed(rate)
+    }
 
     Column(Modifier.fillMaxSize().background(OffWhite)) {
-        Column(
-            Modifier.fillMaxWidth().background(Navy).padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
+        Column(Modifier.fillMaxWidth().background(Navy).padding(horizontal = 13.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.GraphicEq, null, tint = Cyan, modifier = Modifier.size(27.dp))
-                Spacer(Modifier.width(7.dp))
-                Text("VocaLingua", color = Color.White, fontWeight = FontWeight.ExtraBold,
-                    fontSize = 21.sp, modifier = Modifier.weight(1f))
-                Surface(color = Color(0xFF24324B), shape = RoundedCornerShape(30.dp), border = BorderStroke(1.dp, Color(0xFF84713C))) {
-                    Text("♛  Pro", Modifier.padding(horizontal = 13.dp, vertical = 7.dp), color = Color(0xFFFBD56D),
-                        fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Icon(Icons.Default.GraphicEq, null, tint = Cyan, modifier = Modifier.size(24.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("VocaLingua", fontWeight = FontWeight.ExtraBold, fontSize = 20.sp,
+                    color = Color.White, modifier = Modifier.weight(1f))
+                Surface(color = Color(0xFF24324B), shape = RoundedCornerShape(24.dp)) {
+                    Text("♛ Pro", Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                        fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD670))
                 }
-                Spacer(Modifier.width(9.dp))
-                Surface(shape = CircleShape, color = Color(0xFF33425D)) {
-                    Icon(Icons.Default.Person, null, tint = Color.White, modifier = Modifier.padding(8.dp).size(18.dp))
-                }
+                Spacer(Modifier.width(10.dp))
+                Icon(Icons.Default.Person, null, tint = Color.White)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                TopTab("Ana Sayfa", Icons.Default.Home, false) { onLibrary() }
-                TopTab("Ders", Icons.Default.PlayCircle, true) {}
-                TopTab("Sözlük", Icons.Default.MenuBook, false) { onWord() }
-                TopTab("IPA", Icons.Default.Translate, false) { onPhoneme() }
-                TopTab("İlerleme", Icons.Default.TrendingUp, false) { onProgress() }
+                HomeTab("Ders", Icons.Default.PlayCircle, true) {}
+                HomeTab("Kütüphane", Icons.Default.LibraryMusic, false, onLibrary)
+                HomeTab("IPA", Icons.Default.Translate, false, onPhoneme)
+                HomeTab("Mikrofon", Icons.Default.Mic, false, onPractice)
+                HomeTab("İlerleme", Icons.Default.TrendingUp, false, onProgress)
             }
         }
 
-        Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(11.dp)
-        ) {
-            Box {
-                YouTubeEmbed(player, Modifier.fillMaxWidth().aspectRatio(16f / 9f))
-            }
+        // Keep the YouTube video visible while the lyrics underneath scroll.
+        Column(Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 12.dp, vertical = 7.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            YouTubeEmbed(
+                controller = player, videoId = edition.videoId,
+                modifier = Modifier.fillMaxWidth().aspectRatio(16f/9f)
+            )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("SEM CONTROLE", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
-                    Text("pt-BR · IPA & Vocal Lab · YouTube", color = Muted, fontSize = 12.sp)
+                    Text("SEM CONTROLE", fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
+                    Text("nightfxrce · Brezilya Portekizcesi · YouTube",
+                        fontSize = 10.sp, color = Muted)
                 }
-                IconButton(onClick = { favorite = !favorite }) {
+                IconButton(onClick = { favorite = !favorite }, modifier = Modifier.size(35.dp)) {
                     Icon(if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        contentDescription = "Kaydet", tint = if (favorite) Color(0xFFE44D56) else Ink)
+                        "Favori", tint = if (favorite) Color(0xFFE35463) else Ink)
                 }
                 IconButton(onClick = {
-                    val url = Uri.parse("https://youtu.be/Am8Yi6tjnVE")
-                    context.startActivity(Intent(Intent.ACTION_VIEW, url))
-                }) {
-                    Icon(Icons.Default.OpenInNew, contentDescription = "YouTube'da aç", tint = Ink)
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=${edition.videoId}")))
+                }, modifier = Modifier.size(35.dp)) {
+                    Icon(Icons.Default.OpenInNew, "YouTube'da aç", tint = Ink)
                 }
             }
-            Surface(color = Color(0xFFE8F5FF), shape = RoundedCornerShape(10.dp)) {
-                Text("Ders önizlemesi · cümle zamanları ve perde grafiği örnektir; YouTube sesinden çıkarılmadı.",
-                    Modifier.padding(10.dp), fontSize = 10.sp, color = DeepBlue, lineHeight = 15.sp)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Pill("Normal", selected = edition == SongEdition.NORMAL, modifier = Modifier.weight(1f),
+                    onClick = {
+                        if (edition != SongEdition.NORMAL) {
+                            edition = SongEdition.NORMAL
+                            player.switchVideo()
+                            expanded = -1
+                        }
+                    })
+                Pill("Sped Up", selected = edition == SongEdition.SPED_UP, modifier = Modifier.weight(1f),
+                    onClick = {
+                        if (edition != SongEdition.SPED_UP) {
+                            edition = SongEdition.SPED_UP
+                            player.switchVideo()
+                            expanded = -1
+                        }
+                    })
+                Pill("${rate}×", selected = false, onClick = {
+                    val next = rateOptions.indexOf(rate).let { if (it < 0) 1 else (it + 1) % rateOptions.size }
+                    rate = rateOptions[next]
+                    player.setSpeed(rate)
+                })
+                Pill(if (editTiming) "✓ İşaretle" else "⏱ Eşleştir",
+                    selected = editTiming, onClick = { editTiming = !editTiming })
             }
-            samplePhrases.forEachIndexed { index, phrase ->
-                PhraseCard(
-                    phrase = phrase,
-                    selected = index == selectedPhrase,
-                    ipaVisible = showIpa,
-                    translationVisible = showTranslation,
-                    onClick = { selectedPhrase = index },
-                    onWord = onWord
+            if (player.playerError != 0) {
+                Text("YouTube oynatımı engellendi (hata ${player.playerError}). Sağ üstteki bağlantıdan videoyu açabilirsin.",
+                    fontSize = 11.sp, color = Color(0xFFBA4A3A))
+            }
+        }
+
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Cümle cümle şarkı sözleri", fontSize = 15.sp, color = Ink, fontWeight = FontWeight.ExtraBold)
+                Text("Çalan satır mavi olur · detayı yalnızca dokununca aç",
+                    fontSize = 11.sp, color = Muted)
+            }
+            if (player.ready) {
+                Surface(color = Sky, shape = RoundedCornerShape(10.dp)) {
+                    Text("${toClock(playbackSeconds)}", Modifier.padding(9.dp),
+                        fontSize = 11.sp, color = DeepBlue, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            item {
+                Surface(color = Color(0xFFE7F3FF), shape = RoundedCornerShape(12.dp)) {
+                    Text(
+                        if (editTiming)
+                            "Düzeltme açık: şarkı çalarken istediğin cümlede ‘Şimdi işaretle’ düğmesine bas. Zaman cihazına kaydedilecek."
+                        else
+                            "Demo cümle zamanları yaklaşık. YouTube sesi analiz edilmedi; ‘Eşleştir’ ile zamanları düzeltebilirsin.",
+                        Modifier.padding(10.dp), color = DeepBlue, fontSize = 11.sp, lineHeight = 16.sp
+                    )
+                }
+            }
+            itemsIndexed(cues, key = { index, _ -> index }) { index, cue ->
+                SongSentenceCard(
+                    index = index,
+                    cue = cue,
+                    isActive = index == activeCue && player.ready,
+                    expanded = index == expanded,
+                    editTiming = editTiming,
+                    calibrated = prefs.contains("cue_${edition.videoId}_$index"),
+                    onToggle = { expanded = if (expanded == index) -1 else index },
+                    onPlay = {
+                        player.seekTo(cue.timeSeconds)
+                        if (expanded != index) expanded = index
+                    },
+                    onWord = onWord,
+                    onCalibrate = {
+                        prefs.edit().putFloat("cue_${edition.videoId}_$index", playbackSeconds).apply()
+                        syncRevision++
+                    }
                 )
             }
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                Pill("${speeds[speedIndex]}×", selected = true, onClick = {
-                    speedIndex = (speedIndex + 1) % speeds.size
-                    player.setSpeed(speeds[speedIndex])
-                })
-                Pill("−10 sn", onClick = { player.seekBy(-10) })
-                Pill("+10 sn", onClick = { player.seekBy(10) })
-                Pill("IPA", selected = showIpa, onClick = { showIpa = !showIpa })
-                Pill("Çeviri", selected = showTranslation, onClick = { showTranslation = !showTranslation })
-                Pill("Ritim", selected = showRhythm, onClick = { showRhythm = !showRhythm })
-            }
-            Panel {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Subtitles, null, tint = Accent)
-                    Spacer(Modifier.width(9.dp))
-                    Column(Modifier.weight(1f)) {
-                        SectionTitle("Cümle cümle akış")
-                        Description("Normal yazım · IPA · kelime detayları")
+            item {
+                Surface(color = TealSoft, shape = RoundedCornerShape(13.dp),
+                    modifier = Modifier.fillMaxWidth()) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Mic, null, tint = Color(0xFF148D76))
+                        Spacer(Modifier.width(8.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Şimdi sen söyle", fontWeight = FontWeight.Bold, color = Ink, fontSize = 13.sp)
+                            Text("Mikrofonla kendi sesinin perdesini ölç.", fontSize = 11.sp, color = Muted)
+                        }
+                        IconButton(onClick = onPractice) { Icon(Icons.Default.ChevronRight, null, tint = Accent) }
                     }
-                    Icon(Icons.Default.KeyboardArrowDown, null, tint = Ink)
                 }
             }
-            if (showRhythm) {
-                Panel {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.MusicNote, null, tint = Accent, modifier = Modifier.size(19.dp))
-                        Spacer(Modifier.width(5.dp))
-                        SectionTitle("Ritim / Zaman Çizelgesi")
-                        Spacer(Modifier.weight(1f))
-                        Text("ÖRNEK", color = Muted, fontSize = 10.sp)
-                    }
-                    Spacer(Modifier.height(13.dp))
-                    BeatStrip(samplePhrases[selectedPhrase].syllables)
-                }
-            }
-            Panel {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Timeline, null, tint = Accent, modifier = Modifier.size(19.dp))
-                    Spacer(Modifier.width(6.dp))
-                    SectionTitle("Melodi (Perde Eğrisi)")
-                    Spacer(Modifier.weight(1f))
-                    Text("ÖRNEK", color = Muted, fontSize = 10.sp)
-                }
-                Spacer(Modifier.height(5.dp))
-                MelodyGraph()
-            }
-            GradientCard(Modifier.fillMaxWidth()) {
-                Text("Şimdi sıra sende", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = Color.White)
-                Spacer(Modifier.height(6.dp))
-                Text("Mikrofonu aç, perde ve ses şiddetini canlı izle. Şarkıdan ses kopyalamıyoruz.",
-                    color = Color(0xFFDAF0FF), fontSize = 12.sp, lineHeight = 18.sp)
-                Spacer(Modifier.height(13.dp))
-                Button(onClick = onPractice, colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = DeepBlue)) {
-                    Icon(Icons.Default.Mic, null)
-                    Spacer(Modifier.width(5.dp))
-                    Text("Sesimi analiz et")
-                }
-            }
-            Spacer(Modifier.height(8.dp))
         }
     }
 }
 
 @Composable
-private fun TopTab(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, selected: Boolean, onClick: () -> Unit) {
-    Column(
-        Modifier.clip(RoundedCornerShape(11.dp))
-            .background(if (selected) Color(0xFFCAE4FF) else Color.Transparent)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Icon(icon, null, modifier = Modifier.size(19.dp), tint = if (selected) DeepBlue else Color.White)
-        Text(label, fontSize = 10.sp, color = if (selected) DeepBlue else Color.White, maxLines = 1)
-    }
-}
-
-@Composable
-private fun PhraseCard(
-    phrase: LearningPhrase,
-    selected: Boolean,
-    ipaVisible: Boolean,
-    translationVisible: Boolean,
-    onClick: () -> Unit,
-    onWord: () -> Unit
+private fun SongSentenceCard(
+    index:Int, cue:SongCue, isActive:Boolean, expanded:Boolean,
+    editTiming:Boolean, calibrated:Boolean,
+    onToggle:()->Unit, onPlay:()->Unit, onWord:(String)->Unit, onCalibrate:()->Unit
 ) {
+    val color = if (isActive) Color(0xFFECF6FF) else Color.White
     Surface(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth().animateContentSize(),
+        color = color,
         shape = RoundedCornerShape(17.dp),
-        color = if (selected) Color(0xFFF9FCFF) else Color.White,
-        border = BorderStroke(1.dp, if (selected) Color(0xFFBCD9F4) else Line),
-        shadowElevation = if (selected) 2.dp else 0.dp
+        border = BorderStroke(1.dp, if (isActive) Color(0xFF78B9F0) else Line),
+        shadowElevation = if (isActive) 2.dp else 0.dp
     ) {
-        Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.padding(11.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.PlayCircle, null, tint = Accent, modifier = Modifier.size(21.dp))
-                Spacer(Modifier.width(7.dp))
-                if (selected && phrase.text.contains("chão")) {
-                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Desce, desce, desce até o ", color = Ink,
-                            fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 2,
-                            modifier = Modifier.weight(1f, fill = false))
-                        Surface(color = Color(0xFFC7E2FF), shape = RoundedCornerShape(6.dp),
-                            modifier = Modifier.clickable(onClick = onWord)) {
-                            Text("chão", Modifier.padding(horizontal = 3.dp, vertical = 2.dp),
-                                color = DeepBlue, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
-                        }
-                    }
-                } else {
-                    Text(phrase.text, color = Ink, fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                        maxLines = 3, modifier = Modifier.weight(1f))
+                IconButton(
+                    onClick = onPlay,
+                    modifier = Modifier.size(35.dp).background(if(isActive) Color(0xFFD1EBFF) else Sky, CircleShape)
+                ) {
+                    Icon(Icons.Default.PlayArrow, "Cümleyi oynat", tint = DeepBlue, modifier = Modifier.size(22.dp))
+                }
+                Spacer(Modifier.width(9.dp))
+                Column(Modifier.weight(1f).clickable(onClick = onToggle)) {
+                    Text(cue.text, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                        color = Ink, lineHeight = 18.sp, maxLines = if (expanded) 6 else 2,
+                        overflow = TextOverflow.Ellipsis)
+                    Text(if (isActive) "Şimdi çalan cümle" else if (calibrated) "Zamanı işaretlendi" else "Detaylar için dokun",
+                        fontSize = 10.sp, color = if(isActive) Accent else Muted)
+                }
+                IconButton(onClick = onToggle, modifier = Modifier.size(34.dp)) {
+                    Icon(if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        "Detayları ${if(expanded)"kapat" else "aç"}", tint = Ink)
                 }
             }
-            if (ipaVisible) {
-                Text(phrase.ipa, color = DeepBlue, fontSize = 12.sp, fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(start = 27.dp), lineHeight = 17.sp)
-            }
-            if (translationVisible) {
-                Text(phrase.translation, color = Muted, fontSize = 12.sp, modifier = Modifier.padding(start = 27.dp))
-            }
-            if (selected) {
-                Spacer(Modifier.height(2.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf(1, 2, 3, 4).forEach { n ->
-                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Box(Modifier.size(6.dp).background(Accent, CircleShape))
-                                Text("$n", fontSize = 9.sp, color = Muted)
-                            }
-                        }
+            if (expanded) {
+                Spacer(Modifier.height(10.dp))
+                HorizontalDivider(color = Line)
+                Spacer(Modifier.height(9.dp))
+                Text("IPA · Brezilya Portekizcesi", fontSize = 10.sp, color = Muted)
+                Text(if (cue.ipa.isBlank()) "Bu bölümün IPA'sı kayıttan henüz doğrulanmadı." else cue.ipa,
+                    color = Accent, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, lineHeight = 19.sp)
+                Spacer(Modifier.height(8.dp))
+                Text("Anlam", fontSize = 10.sp, color = Muted)
+                Text(cue.translation, color = Ink, fontSize = 12.sp)
+                Spacer(Modifier.height(11.dp))
+                Text("Bir kelime seç, ayrıntısına gir", fontSize = 10.sp, color = Muted)
+                Spacer(Modifier.height(5.dp))
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    cue.text.split(Regex("\\s+")).filter { it.isNotBlank() }.forEach { token ->
+                        Pill(token.trim(',', '.', '?', '!', '—'), onClick = { onWord(token.trim(',', '.', '?', '!', '—')) })
                     }
+                }
+                if (editTiming) {
+                    Spacer(Modifier.height(10.dp))
+                    AccentButton(
+                        "Şimdi işaretle (${toClock(cue.timeSeconds)})",
+                        Icons.Default.AccessTime,
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onCalibrate
+                    )
                 }
             }
         }
     }
 }
 
-@Composable
-private fun BeatStrip(syllables: List<String>) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            syllables.forEachIndexed { index, syllable ->
-                Surface(color = if (index == syllables.lastIndex) Color(0xFFB5DBFF) else Color(0xFFE9F1FA),
-                    shape = RoundedCornerShape(8.dp)) {
-                    Text(syllable, Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
-                        fontSize = 10.sp, color = DeepBlue, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-            for (i in 1..4) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(Modifier.size(7.dp).background(Accent, CircleShape))
-                    Text("$i", color = Muted, fontSize = 10.sp)
-                }
-            }
-        }
-    }
+private fun toClock(seconds:Float):String {
+    val n=seconds.toInt().coerceAtLeast(0)
+    return "${n/60}:${(n%60).toString().padStart(2,'0')}"
 }
 
 @Composable
-fun MelodyGraph(modifier: Modifier = Modifier) {
-    val y = listOf(.70f, .61f, .39f, .43f, .67f, .71f, .62f, .52f, .73f, .63f, .32f, .25f)
-    Column(modifier) {
-        Canvas(Modifier.fillMaxWidth().height(105.dp)) {
-            val left = 14.dp.toPx()
-            val top = 12.dp.toPx()
-            val right = size.width - 12.dp.toPx()
-            val bottom = size.height - 10.dp.toPx()
-            for (n in 0..3) {
-                val py = top + (bottom-top) * n / 3f
-                drawLine(Color(0xFFE5EDF5), Offset(left, py), Offset(right, py), 1.dp.toPx())
-            }
-            val points = y.mapIndexed { index, value ->
-                Offset(left + (right-left) * index / (y.size-1), top + (bottom-top) * value)
-            }
-            val path = Path().apply {
-                points.forEachIndexed { i, p -> if (i == 0) moveTo(p.x,p.y) else lineTo(p.x,p.y) }
-            }
-            drawPath(path, Accent, style = Stroke(width = 2.5.dp.toPx()))
-            points.forEach { p ->
-                drawCircle(Color.White, 4.4.dp.toPx(), p)
-                drawCircle(Accent, 2.7.dp.toPx(), p)
-            }
-        }
-        Text("Gösterim amaçlı eğri; gerçek şarkı notaları değildir.", color = Muted, fontSize = 10.sp)
+private fun HomeTab(label:String, icon:androidx.compose.ui.graphics.vector.ImageVector, current:Boolean, onClick:()->Unit) {
+    Column(Modifier.clip(RoundedCornerShape(11.dp))
+        .background(if(current) Color(0xFFC8E3FF) else Color.Transparent)
+        .clickable(onClick=onClick).padding(horizontal=8.dp,vertical=7.dp),
+        horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(icon,null,tint=if(current) DeepBlue else Color.White,modifier=Modifier.size(19.dp))
+        Text(label,fontSize=10.sp,color=if(current) DeepBlue else Color.White)
     }
 }

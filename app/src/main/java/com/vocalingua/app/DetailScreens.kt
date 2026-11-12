@@ -19,12 +19,33 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.Locale
 
+private data class WordEntry(val spelling:String,val ipa:String,val meaning:String)
+private val lexicon = mapOf(
+    "chão" to WordEntry("chão", "[ʃɐ̃w̃]", "yer, zemin"),
+    "desce" to WordEntry("desce", "[ˈdɛ.si]", "aşağı in"),
+    "quando" to WordEntry("quando", "[ˈkwɐ̃.du]", "ne zaman, -dığında"),
+    "bate" to WordEntry("bate", "[ˈba.tʃi]", "vuruyor"),
+    "beat" to WordEntry("beat", "[ˈbi.tʃi]", "ritim, beat"),
+    "até" to WordEntry("até", "[aˈtɛ]", "-e kadar"),
+    "controle" to WordEntry("controle", "[kõˈtɾɔ.li]", "kontrol"),
+    "coração" to WordEntry("coração", "[ko.ɾaˈsɐ̃w̃]", "kalp"),
+    "então" to WordEntry("então", "[ẽˈtɐ̃w̃]", "o zaman"),
+    "vira" to WordEntry("vira", "[ˈvi.ɾɐ]", "dön"),
+    "joga" to WordEntry("joga", "[ˈʒɔ.gɐ]", "at, gönder"),
+    "pressão" to WordEntry("pressão", "[pɾeˈsɐ̃w̃]", "basınç, baskı"),
+    "o" to WordEntry("o", "[u]", "belirli tanımlık")
+)
+
 @Composable
 fun WordScreen(
+    word: String,
     onBack: () -> Unit,
     onPhoneme: (String) -> Unit,
     onPractice: () -> Unit
 ) {
+    val entry = lexicon[word.lowercase(java.util.Locale.forLanguageTag("pt-BR"))]
+        ?: WordEntry(word, "IPA bekleniyor", "Anlam verisi henüz eklenmedi")
+    val isChao = entry.spelling.equals("chão", ignoreCase = true)
     val tabs = listOf("Telaffuz", "Artikülasyon", "Ritim", "Hatalar", "Benzer Sesler")
     var tab by remember { mutableIntStateOf(0) }
     var favorite by remember { mutableStateOf(false) }
@@ -40,25 +61,25 @@ fun WordScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = {
                         speech.language = Locale.forLanguageTag("pt-BR")
-                        speech.speak("chão", TextToSpeech.QUEUE_FLUSH, null, "chao")
+                        speech.speak(entry.spelling, TextToSpeech.QUEUE_FLUSH, null, "word")
                     }) {
                         Icon(Icons.Default.VolumeUp, null, tint = Accent, modifier = Modifier.size(27.dp))
                     }
                     Column(Modifier.weight(1f)) {
-                        Text("chão", fontSize = 39.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
-                        Text("[ʃɐ̃w̃]", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Accent)
+                        Text(entry.spelling, fontSize = 39.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
+                        Text(entry.ipa, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Accent)
                     }
                     Surface(shape = RoundedCornerShape(14.dp), color = Sky) {
                         Column(Modifier.padding(15.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(Icons.Default.Home, null, tint = DeepBlue, modifier = Modifier.size(40.dp))
-                            Text("yer · zemin", color = DeepBlue, fontSize = 11.sp)
+                            Text(entry.meaning, color = DeepBlue, fontSize = 11.sp)
                         }
                     }
                 }
                 Spacer(Modifier.height(10.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Anlam: ", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Text("yer, zemin", fontSize = 14.sp)
+                    Text(entry.meaning, fontSize = 14.sp)
                     Spacer(Modifier.weight(1f))
                     IconButton(onClick = { favorite = !favorite }) {
                         Icon(if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
@@ -67,8 +88,8 @@ fun WordScreen(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     StatusTag("pt-BR")
-                    StatusTag("Tek hece", TealSoft, Color(0xFF137465))
-                    StatusTag("Burunsal diftong", Warm, Color(0xFF9A5527))
+                    StatusTag(if (isChao) "Tek hece" else "Kelime", TealSoft, Color(0xFF137465))
+                    StatusTag(if (isChao) "Burunsal diftong" else "IPA dersleri", Warm, Color(0xFF9A5527))
                 }
             }
 
@@ -86,7 +107,7 @@ fun WordScreen(
                         }
                         Spacer(Modifier.height(8.dp))
                         Surface(color = Sky, shape = RoundedCornerShape(12.dp)) {
-                            Text("Önce [ʃ] ile başla. Ardından [ɐ̃] bölümünü burunsal üret, sesi kesmeden dudaklarını yuvarlayarak [w̃] konumuna kay. Bütün hareket tek hecede.",
+                            Text(if (isChao) "Önce [ʃ] ile başla. Ardından [ɐ̃] bölümünü burunsal üret, sesi kesmeden dudaklarını yuvarlayarak [w̃] konumuna kay. Bütün hareket tek hecede." else "Bu kelimenin IPA gösterimi yukarıda. Kelimeye özel ağız anatomisi eğitimi henüz hazırlanmamış; aşağıdaki görsel genel ses yolu anatomisini gösteriyor.",
                                 Modifier.padding(12.dp), color = DeepBlue, fontSize = 13.sp, lineHeight = 19.sp)
                         }
                     }
@@ -122,7 +143,7 @@ fun WordScreen(
                             }
                         }
                     }
-                    Panel { SectionTitle("Melodi örneği"); MelodyGraph() }
+                    Panel { SectionTitle("Ritim çalışması"); Description("Şarkının gerçek ritim ve hece süreleri, ses kaydı ölçülüp lisanslı zaman verisi hazırlanmadıkça kesin değildir. Videodaki cümle kartında zamanları işaretleyebilirsin.") }
                 }
                 3 -> MistakesPanel()
                 4 -> ComparisonPanel()
@@ -247,7 +268,13 @@ fun PhonemeScreen(initialSound: String, onBack: () -> Unit, onPractice: () -> Un
                 InfoRow("Akustik", sound.acoustic, "A")
             }
             AnatomyDiagram(selected)
-            AcousticGraphs()
+            Panel {
+                SectionTitle("Akustik özet")
+                Spacer(Modifier.height(7.dp))
+                Description(sound.acoustic)
+                Spacer(Modifier.height(8.dp))
+                Description("Gereksiz dalga ve spektrogram grafikleri kaldırıldı. Bu ses için gerçek ölçüm olmadığında temsili ölçüm gösterilmiyor.")
+            }
             Panel {
                 SectionTitle("Bu sesi üretirken")
                 Spacer(Modifier.height(8.dp))
