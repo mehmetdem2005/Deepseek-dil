@@ -144,8 +144,31 @@ fun SongScreen(
                     selected = editTiming, onClick = { editTiming = !editTiming })
             }
             if (player.playerError != 0) {
-                Text("YouTube oynatımı engellendi (hata ${player.playerError}). Sağ üstteki bağlantıdan videoyu açabilirsin.",
-                    fontSize = 11.sp, color = Color(0xFFBA4A3A))
+                Surface(color = Color(0xFFFFF1ED), shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("YouTube videoyu açamadı (hata ${player.playerError}).",
+                            fontSize = 12.sp, color = Color(0xFF9C352B),
+                            fontWeight = FontWeight.Bold)
+                        Text("Gömülü oynatıcı kimliği düzeltildi. Video hâlâ kısıtlıysa resmî YouTube oynatıcısını açabilirsin.",
+                            fontSize = 11.sp, color = Ink, lineHeight = 16.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { player.reload() }) {
+                                Icon(Icons.Default.Refresh, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(5.dp))
+                                Text("Tekrar dene", fontSize = 11.sp)
+                            }
+                            Button(onClick = {
+                                context.startActivity(Intent(Intent.ACTION_VIEW,
+                                    Uri.parse("https://www.youtube.com/watch?v=${edition.videoId}")))
+                            }) {
+                                Icon(Icons.Default.OpenInNew, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(5.dp))
+                                Text("YouTube'da aç", fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
             }
         }
 
