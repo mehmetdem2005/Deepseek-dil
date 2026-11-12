@@ -2,6 +2,7 @@ package com.vocalingua.app
 
 import android.annotation.SuppressLint
 import android.webkit.JavascriptInterface
+import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -36,6 +37,14 @@ class YouTubeController {
     fun seekBy(seconds: Int) = script("if(window.ytPlayer){window.ytPlayer.seekTo(Math.max(0,window.ytPlayer.getCurrentTime()+($seconds)),true)}")
     fun togglePlayback() = script("if(window.ytPlayer){if(window.ytPlayer.getPlayerState()===1){window.ytPlayer.pauseVideo()}else{window.ytPlayer.playVideo()}}")
     private fun script(value: String) { webView?.evaluateJavascript(value, null) }
+    /** Retry after WebView/player errors without touching the user's lesson state. */
+    fun reload() {
+        playbackSeconds = 0f
+        isPlaying = false
+        ready = false
+        playerError = 0
+        webView?.reload()
+    }
     fun switchVideo() {
         playbackSeconds = 0f
         isPlaying = false
@@ -71,7 +80,7 @@ fun YouTubeEmbed(
     // Restrict to trusted, hard-coded official artist videos.
     val allowed = setOf("Am8Yi6tjnVE", "ehBGpIlEj3k")
     val safeVideoId = if (videoId in allowed) videoId else "Am8Yi6tjnVE"
-    val html = remember(safeVideoId) {
+    // YouTube requires the installed Android application ID as an HTTPS Referer.\n    // This is a WebView virtual base URL; it does not contact an invented website.\n    val clientOrigin = "https://com.vocalingua.app"\n    val html = remember(safeVideoId) {
         """
         <!doctype html><html><head>
         <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -84,7 +93,7 @@ fun YouTubeEmbed(
           function onYouTubeIframeAPIReady(){
             ytPlayer=new YT.Player('player',{
               videoId:'$safeVideoId',
-              playerVars:{playsinline:1,controls:1,rel:0,enablejsapi:1,origin:'https://www.youtube.com'},
+              playerVars:{playsinline:1,controls:1,rel:0,enablejsapi:1,origin:'https://com.vocalingua.app'},
               events:{
                 onReady:function(e){ytPlayer=e.target;Android.onReady();},
                 onError:function(e){Android.onError(e.data);}
@@ -109,6 +118,8 @@ fun YouTubeEmbed(
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
                     settings.mediaPlaybackRequiresUserGesture = true
+                    // The official YouTube embed may require third-party cookies.
+                    CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                     settings.allowFileAccess = false
                     settings.allowContentAccess = false
                     webChromeClient = WebChromeClient()
@@ -116,7 +127,7 @@ fun YouTubeEmbed(
                     setBackgroundColor(android.graphics.Color.rgb(8, 21, 40))
                     addJavascriptInterface(YoutubeBridge(controller), "Android")
                     controller.webView = this
-                    loadDataWithBaseURL("https://www.youtube.com/", html, "text/html", "UTF-8", null)
+                    loadDataWithBaseURL("$clientOrigin/", html, "text/html", "UTF-8", null)
                 }
             },
             update = { controller.webView = it },
